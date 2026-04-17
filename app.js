@@ -99,7 +99,89 @@ const AIRLINES = [
   { code:'KL', name:'KLM',             emoji:'🩵', home:'https://www.klm.com'            },
 ];
 
-// ── PRICING ───────────────────────────────────────────────────────────────────
+// ── AMADEUS LIVE API ──────────────────────────────────────────────────────────
+// Free API keys → https://developers.amadeus.com  (Self-Service → Create app)
+// Paste your credentials below; leave blank to use estimated prices as fallback.
+
+const AMADEUS_CLIENT_ID     = '';   // ← your Amadeus client ID
+const AMADEUS_CLIENT_SECRET = '';   // ← your Amadeus client secret
+const AMADEUS_BASE          = 'https://test.api.amadeus.com';
+
+let _amToken    = null;
+let _amTokenExp = 0;
+
+async function amadeusToken() {
+  if (_amToken && Date.now() < _amTokenExp) return _amToken;
+  const res = await fetch(`${AMADEUS_BASE}/v1/security/oauth2/token`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    `grant_type=client_credentials&client_id=${AMADEUS_CLIENT_ID}&client_secret=${AMADEUS_CLIENT_SECRET}`,
+  });
+  if (!res.ok) throw new Error(`Amadeus auth failed: ${res.status}`);
+  const j = await res.json();
+  _amToken    = j.access_token;
+  _amTokenExp = Date.now() + (j.expires_in - 60) * 1000;
+  return _amToken;
+}
+
+async function searchAmadeusFlights() {
+  const token = await amadeusToken();
+  const cabinMap = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' };
+
+  const params = new URLSearchParams({
+    originLocationCode:      S.origin.code,
+    destinationLocationCode: S.destination.code,
+    departureDate:           S.depDate,
+    adults:                  String(S.passengers),
+    max:                     '15',
+    currencyCode:            'EUR',
+    travelClass:             cabinMap[S.cabin] || 'ECONOMY',
+  });
+  if (S.tripType === 'roundtrip' && S.retDate) params.set('returnDate', S.retDate);
+
+  const res = await fetch(`${AMADEUS_BASE}/v2/shopping/flight-offers?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Flight search failed: ${res.status}`);
+  const json = await res.json();
+  if (!json.data?.length) throw new Error('No results from Amadeus');
+  return mapAmadeusOffers(json.data);
+}
+
+function parseDuration(iso) {             // "PT2H35M" → minutes
+  const h = parseInt(iso.match(/(\d+)H/)?.[1] || '0');
+  const m = parseInt(iso.match(/(\d+)M/)?.[1] || '0');
+  return h * 60 + m;
+}
+
+function mapAmadeusOffers(offers) {
+  const dist = Math.round(haversine(S.origin.lat, S.origin.lon, S.destination.lat, S.destination.lon));
+  return offers.map((offer, idx) => {
+    const itin      = offer.itineraries[0];
+    const seg0      = itin.segments[0];
+    const segLast   = itin.segments[itin.segments.length - 1];
+    const [dh, dm]  = seg0.departure.at.split('T')[1].split(':').map(Number);
+    const [ah, am]  = segLast.arrival.at.split('T')[1].split(':').map(Number);
+    const duration  = parseDuration(itin.duration);
+    const stops     = itin.segments.length - 1;
+    const layovers  = itin.segments.slice(0, -1).map(s => s.arrival.iataCode);
+    const code      = seg0.carrierCode;
+    const airline   = AIRLINES.find(a => a.code === code)
+                   || { code, name: code, emoji: '✈️', home: '#' };
+    const pricePerPax = parseFloat(offer.travelerPricings[0].price.total);
+    const totalPrice  = parseFloat(offer.price.grandTotal);
+    return {
+      id: `${code}-${idx}-${S.depDate}`,
+      airline, depH: dh, depM: dm, arrH: ah, arrM: am,
+      duration, stops, layovers, pricePerPax, totalPrice,
+      flightNum: `${code}${seg0.number}`,
+      distance:  dist, date: S.depDate,
+      _live: true,
+    };
+  });
+}
+
+// ── PRICING (fallback — used when Amadeus keys are not set) ───────────────────
 
 // Base prices in EUR by distance bucket
 const BASE_EUR = {
@@ -644,9 +726,9 @@ function validate() {
   return true;
 }
 
-searchBtn.addEventListener('click', doSearch);
+searchBtn.addEventListener('click', () => doSearch());
 
-function doSearch() {
+async function doSearch() {
   if (!validate()) return;
 
   resultsEl.classList.remove('hidden');
@@ -657,21 +739,39 @@ function doSearch() {
   flightsList.innerHTML = '';
   countLabel.classList.add('hidden');
 
-  const airlines = routeAirlines(S.origin.code, S.destination.code);
-  loadingSub.textContent = `Checking ${airlines.map(a => a.name).join(', ')}`;
+  const useLive = !!(AMADEUS_CLIENT_ID && AMADEUS_CLIENT_SECRET);
+  loadingSub.textContent = useLive
+    ? 'Fetching live prices from airlines…'
+    : `Checking ${AIRLINES.map(a => a.name).join(', ')}`;
 
   resetFilters();
   resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  setTimeout(() => {
-    S.allFlights = generateFlights();
-    resetFilters();
-    applyFiltersAndRender();
-    loadingEl.classList.add('hidden');
-    resHeadEl.classList.remove('hidden');
-    updateStickyBar();
-    stickyBar.classList.remove('hidden');
-  }, 900 + Math.floor(Math.random() * 700));
+  // Run API call (or simulated delay) in parallel with a minimum 0.9 s loading time
+  const [flights] = await Promise.all([
+    fetchFlights(),
+    new Promise(r => setTimeout(r, 900 + Math.random() * 700)),
+  ]);
+
+  S.allFlights = flights;
+  resetFilters();
+  applyFiltersAndRender();
+  loadingEl.classList.add('hidden');
+  resHeadEl.classList.remove('hidden');
+  updateStickyBar();
+  stickyBar.classList.remove('hidden');
+}
+
+async function fetchFlights() {
+  if (AMADEUS_CLIENT_ID && AMADEUS_CLIENT_SECRET) {
+    try {
+      return await searchAmadeusFlights();
+    } catch (err) {
+      console.warn('Amadeus API error — falling back to estimated prices:', err);
+      showToast('Live prices unavailable — showing estimated prices', 3500);
+    }
+  }
+  return generateFlights();
 }
 
 // ── FLIGHT GENERATION ────────────────────────────────────────────────────────
@@ -857,12 +957,17 @@ function stopsLabel(n) {
 }
 
 function renderResults(flights) {
-  resTitle.textContent = `${S.origin.city} → ${S.destination.city}`;
+  const isLive = flights.some(f => f._live);
+  resTitle.innerHTML = `${S.origin.city} → ${S.destination.city}`
+    + (isLive
+      ? ` <span style="font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">● Live prices</span>`
+      : ` <span style="font-size:11px;font-weight:600;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">~ Estimated prices</span>`);
   const dist = Math.round(haversine(S.origin.lat, S.origin.lon, S.destination.lat, S.destination.lon));
   let info = fmtDate(S.depDate);
   if (S.retDate) info += ` · Return ${fmtDate(S.retDate)}`;
   info += ` · ${S.passengers} passenger${S.passengers > 1 ? 's' : ''}`;
   info += ` · ${capitalize(S.cabin)} · ~${fmtPrice(dist)} km`;
+  if (!isLive) info += ' · Add Amadeus API keys for live prices';
   resInfo.textContent = info;
 
   $q('.sort-pill').forEach(p => p.classList.toggle('active', p.dataset.sort === S.sortBy));
