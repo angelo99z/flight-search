@@ -302,29 +302,35 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
            + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}`
            + `/${pax}/0/0/0`;
 
-    case 'BA': // British Airways — legacy IBE params (targets the home/search page directly)
-      return `https://www.britishairways.com/travel/home/public/en_gb/`
-           + `?Oc=${o}&Dc=${d}&AdultsNmbr=${pax}&CabinCode=${cabinBA}`
+    case 'BA': // British Airways — execclub affiliate deep-link (accepts pre-fill params)
+      return `https://www.britishairways.com/travel/booking/execclub/_gf/en_gb`
+           + `?process=searchFlights`
+           + `&Oc=${o}&Dc=${d}`
+           + `&AdultsNmbr=${pax}&ChildrenNmbr=0&InfantNmbr=0`
+           + `&CabinCode=${cabinBA}`
            + `&TravelType=${isRT ? 'R' : 'S'}`
            + `&OutBoundLeg-Date=${dy}${dm}${dd}`
            + `${isRT && retDate ? `&InBoundLeg-Date=${retDate.replace(/-/g, '')}` : ''}`;
 
-    case 'AF': { // Air France — use .co.uk to force English (avoids geo-redirect to .fr)
+    case 'AF': { // Air France — hit booking subdomain directly (wwws.airfrance.fr)
+      // Using wwws.airfrance.fr avoids the geo-redirect that strips query params.
+      // lang=en forces English regardless of server-side locale detection.
       const cabinAF = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'ECONOMY';
       const segs = isRT
         ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
         : `${o}:${d}:${depDate}`;
-      return `https://www.airfrance.co.uk/search/offers`
-           + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en&country=GB`
+      return `https://wwws.airfrance.fr/search/offers`
+           + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en`
            + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
            + `&segments=${segs}`;
     }
 
-    case 'KL': // KLM — locale must be hyphenated en-gb (slash-separated gives 404)
+    case 'KL': { // KLM — en-gb (hyphenated) + hash deep-link
+      const retPart = isRT && retDate ? `return=${d}:${o}/${retDate};` : '';
       return `https://www.klm.com/en-gb/search`
-           + `#outward=${o}:${d}/${depDate};`
-           + `${isRT ? `return=${d}:${o}/${retDate};` : ''}`
+           + `#outward=${o}:${d}/${depDate};${retPart}`
            + `passengers=1:${pax},0,0`;
+    }
 
     default: {
       const al = AIRLINES.find(a => a.code === airlineCode);
