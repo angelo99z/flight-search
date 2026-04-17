@@ -297,15 +297,7 @@ a { text-decoration: none; color: inherit; }
 .iw input.filled { font-weight: 500; }
 
 /* date input */
-.date-iw input { cursor: pointer; padding-right: 10px; }
-.date-hint {
-  position: absolute;
-  right: 10px;
-  font-size: 11px;
-  color: var(--gray-400);
-  pointer-events: none;
-  white-space: nowrap;
-}
+.date-iw input { cursor: pointer; }
 
 /* clear button */
 .clear-btn {

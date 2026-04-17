@@ -48,17 +48,116 @@ const AIRPORTS = [
 ];
 
 const AIRLINES = [
-  { code:'LA', name:'LATAM',            emoji:'🔴', color:'#E31837', url:'https://www.latamairlines.com/br/pt/buscar-voos' },
-  { code:'G3', name:'Gol',              emoji:'🟠', color:'#F86700', url:'https://www.voegol.com.br/pt/passagens-aereas'  },
-  { code:'AD', name:'Azul',             emoji:'🔵', color:'#003DA5', url:'https://www.voeazul.com.br/passagens-aereas'    },
-  { code:'AA', name:'American',         emoji:'⚫', color:'#0078D2', url:'https://www.aa.com/homePage.do?locale=pt_BR'    },
-  { code:'DL', name:'Delta',            emoji:'🟣', color:'#3C1053', url:'https://www.delta.com/br/pt'                    },
-  { code:'AF', name:'Air France',       emoji:'🔷', color:'#002157', url:'https://wwws.airfrance.com.br'                  },
-  { code:'KL', name:'KLM',              emoji:'🩵', color:'#009BD9', url:'https://www.klm.com.br'                         },
-  { code:'IB', name:'Iberia',           emoji:'🟤', color:'#C40016', url:'https://www.iberia.com'                         },
-  { code:'TP', name:'TAP Air Portugal', emoji:'🟢', color:'#006A38', url:'https://www.tapairportugal.com/pt'              },
-  { code:'UA', name:'United',           emoji:'⚪', color:'#002244', url:'https://www.united.com/pt/br'                   },
+  { code:'LA', name:'LATAM',            emoji:'🔴', color:'#E31837', home:'https://www.latamairlines.com/br/pt' },
+  { code:'G3', name:'Gol',              emoji:'🟠', color:'#F86700', home:'https://www.voegol.com.br'          },
+  { code:'AD', name:'Azul',             emoji:'🔵', color:'#003DA5', home:'https://www.voeazul.com.br'         },
+  { code:'AA', name:'American',         emoji:'⚫', color:'#0078D2', home:'https://www.aa.com'                 },
+  { code:'DL', name:'Delta',            emoji:'🟣', color:'#3C1053', home:'https://www.delta.com'              },
+  { code:'AF', name:'Air France',       emoji:'🔷', color:'#002157', home:'https://wwws.airfrance.com.br'      },
+  { code:'KL', name:'KLM',              emoji:'🩵', color:'#009BD9', home:'https://www.klm.com.br'             },
+  { code:'IB', name:'Iberia',           emoji:'🟤', color:'#C40016', home:'https://www.iberia.com'             },
+  { code:'TP', name:'TAP Air Portugal', emoji:'🟢', color:'#006A38', home:'https://www.tapairportugal.com/pt'  },
+  { code:'UA', name:'United',           emoji:'⚪', color:'#002244', home:'https://www.united.com'             },
 ];
+
+// ── BOOKING URLS ──────────────────────────────────────────────────────────────
+// Gera a URL de busca parametrizada de cada companhia aérea
+
+function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripType, cabin) {
+  const isRT = tripType === 'roundtrip' && retDate;
+  const pax  = passengers || 1;
+
+  // Cabin code maps
+  const cabinLA = { economy:'Y', premium:'W', business:'C', first:'F'   }[cabin] || 'Y';
+  const cabinTP = { economy:'E', premium:'W', business:'C', first:'F'   }[cabin] || 'E';
+  const cabinAA = { economy:'COACH', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'COACH';
+  const cabinDL = { economy:'COACH', premium:'PREMIUM_SELECT',  business:'BUSINESS_ELITE', first:'FIRST_CLASS' }[cabin] || 'COACH';
+
+  // Date helpers
+  const [depY, depM, depD] = depDate.split('-');
+  const depCompact   = `${depY}${depM}${depD}`;                           // YYYYMMDD
+  const depSlash     = `${depD}/${depM}/${depY}`;                          // DD/MM/YYYY
+  const [retY, retMo, retDd] = retDate ? retDate.split('-') : ['','',''];
+  const retCompact   = retDate ? `${retY}${retMo}${retDd}` : '';
+  const retSlash     = retDate ? `${retDd}/${retMo}/${retY}` : '';
+
+  switch (airlineCode) {
+
+    case 'LA': // LATAM — URL documentada e estável
+      return `https://www.latamairlines.com/br/pt/buscar-voos`
+           + `?origin=${o}&destination=${d}`
+           + `&outbound=${depDate}${isRT ? `&inbound=${retDate}` : ''}`
+           + `&cabin=${cabinLA}&adults=${pax}&children=0&infants=0`;
+
+    case 'G3': // Gol — formato com segmentos na URL
+      return `https://book.voegol.com.br/passengers/${pax}`
+           + `/from/${o}/to/${d}`
+           + `/depart/${depCompact}`
+           + `/return/${isRT ? retCompact : ''}`
+           + `/type/${isRT ? 'RT' : 'OW'}/home`;
+
+    case 'AD': // Azul — query string
+      return `https://www.voeazul.com.br/passagens-aereas`
+           + `?origem=${o}&destino=${d}`
+           + `&dataIda=${depSlash}${isRT ? `&dataVolta=${retSlash}` : ''}`
+           + `&adultos=${pax}&criancas=0&bebes=0`;
+
+    case 'AA': // American Airlines
+      return `https://www.aa.com/booking/choose-flights/1`
+           + `?bookingPath=${isRT ? 'roundTrip' : 'oneWay'}`
+           + `&flights[0].departureDate=${depDate}`
+           + `&flights[0].origin=${o}&flights[0].destination=${d}`
+           + `&passengers[0].paxType=ADT&passengers[0].count=${pax}`
+           + `&cabin=${cabinAA}`;
+
+    case 'DL': // Delta
+      return `https://www.delta.com/us/en/flight-search/book-a-flight`
+           + `#/departing?tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
+           + `&originAirportCode=${o}&destinationAirportCode=${d}`
+           + `&departureDate=${depDate}`
+           + `${isRT ? `&returnDate=${retDate}` : ''}`
+           + `&numberOfAdults=${pax}&cabinClass=${cabinDL}`;
+
+    case 'AF': // Air France
+      return `https://wwws.airfrance.com.br/cgi-bin/cgif81.dll`
+           + `?market=BR&ext=true&lang=pt`
+           + `&triptype=${isRT ? 'RT' : 'OW'}`
+           + `&dep1=${o}&arr1=${d}&dd1=${depSlash}`
+           + `${isRT ? `&ad1=${retSlash}` : ''}`
+           + `&pax=${pax}`;
+
+    case 'KL': // KLM
+      return `https://www.klm.com/search/br/pt`
+           + `#outward=${o}:${d}/${depDate};`
+           + `${isRT ? `return=${d}:${o}/${retDate};` : ''}`
+           + `passengers=1:${pax},0,0`;
+
+    case 'IB': // Iberia
+      return `https://www.iberia.com/comprar/vuelos/`
+           + `?adults=${pax}&children=0&infants=0`
+           + `&fromAirport=${o}&toAirport=${d}`
+           + `&departure=${depDate}`
+           + `${isRT ? `&returnFlight=${retDate}&tripType=roundTrip` : '&tripType=oneWay'}`;
+
+    case 'TP': // TAP Air Portugal
+      return `https://booking.flytap.com/`
+           + `?lang=PT&searchType=${isRT ? 'R' : 'S'}`
+           + `&origin=${o}&destination=${d}`
+           + `&outboundDate=${depDate}${isRT ? `&returnDate=${retDate}` : ''}`
+           + `&adt=${pax}&chd=0&inf=0&cabin=${cabinTP}`;
+
+    case 'UA': // United Airlines
+      return `https://www.united.com/en/us/flight-search/book-a-flight`
+           + `?f=${o}&t=${d}&d=${depDate}`
+           + `${isRT ? `&r=${retDate}` : ''}`
+           + `&tt=${isRT ? '2' : '1'}&sc=7&numPax=${pax}`;
+
+    default: {
+      const al = AIRLINES.find(a => a.code === airlineCode);
+      return al ? al.home : '#';
+    }
+  }
+}
 
 // airport sets for pricing
 const DOMESTIC = new Set(['GRU','CGH','VCP','GIG','SDU','BSB','SSA','REC','FOR','BEL','MAO','CWB','POA','FLN','NAT','MCZ','THE']);
@@ -190,8 +289,6 @@ const originClear = $('origin-clear');
 const destClear   = $('dest-clear');
 const depInp      = $('dep-inp');
 const retInp      = $('ret-inp');
-const depHint     = $('dep-hint');
-const retHint     = $('ret-hint');
 const retField    = $('ret-field');
 const paxN        = $('pax-n');
 const searchBtn   = $('search-btn');
@@ -339,7 +436,7 @@ $q('.trip-btn').forEach(btn =>
     S.tripType = btn.dataset.type;
     if (S.tripType === 'oneway') {
       retField.classList.add('hidden');
-      S.retDate = null; retInp.value = ''; retHint.textContent = '';
+      S.retDate = null; retInp.value = '';
     } else {
       retField.classList.remove('hidden');
     }
@@ -491,8 +588,7 @@ function pickDay(ds) {
   if (S.calFor === 'dep') {
     S.depDate = ds;
     depInp.value = toDisplay(ds);
-    depHint.textContent = fmtDate(ds).replace(/^\w+,\s*/,'');
-    if (S.retDate && S.retDate <= ds) { S.retDate = null; retInp.value = ''; retHint.textContent = ''; }
+    if (S.retDate && S.retDate <= ds) { S.retDate = null; retInp.value = ''; }
 
     if (S.tripType === 'roundtrip') {
       S.calFor = 'ret';
@@ -505,7 +601,6 @@ function pickDay(ds) {
     if (S.depDate && ds <= S.depDate) { showToast('A data de volta deve ser após a partida'); return; }
     S.retDate = ds;
     retInp.value = toDisplay(ds);
-    retHint.textContent = fmtDate(ds).replace(/^\w+,\s*/,'');
   }
   updateCalSelInfo();
   renderBothMonths();
@@ -908,7 +1003,7 @@ function renderBestPick(f, allFlights) {
         <div class="fc-pr-lbl">${S.passengers>1 ? S.passengers+' passageiros' : 'por pessoa'}</div>
         <div class="fc-price"><span class="fc-cur">R$</span>${fmtPrice(S.passengers>1 ? f.totalPrice : f.pricePerPax)}</div>
         ${S.passengers>1 ? `<div class="fc-pp">R$${fmtPrice(f.pricePerPax)} p.p.</div>` : ''}
-        <a href="${f.airline.url}" target="_blank" rel="noopener noreferrer" class="book-btn green">Ver na ${f.airline.name}</a>
+        <a href="${buildBookingUrl(f.airline.code, S.origin.code, S.destination.code, S.depDate, S.retDate, S.passengers, S.tripType, S.cabin)}" target="_blank" rel="noopener noreferrer" class="book-btn green">Ver na ${f.airline.name}</a>
       </div>
     </div>
   `;
@@ -968,7 +1063,7 @@ function flightCardHTML(f) {
       <div class="fc-pr-lbl">${S.passengers>1 ? S.passengers+' passageiros' : 'por pessoa'}</div>
       <div class="fc-price"><span class="fc-cur">R$</span>${price}</div>
       ${S.passengers>1 ? `<div class="fc-pp">R$${pp} p.p.</div>` : ''}
-      <a href="${f.airline.url}" target="_blank" rel="noopener noreferrer" class="book-btn">Ver na ${f.airline.name}</a>
+      <a href="${buildBookingUrl(f.airline.code, S.origin.code, S.destination.code, S.depDate, S.retDate, S.passengers, S.tripType, S.cabin)}" target="_blank" rel="noopener noreferrer" class="book-btn">Ver na ${f.airline.name}</a>
     </div>
 
     <div class="fc-expand-row">
