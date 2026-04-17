@@ -302,15 +302,13 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
            + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}`
            + `/${pax}/0/0/0`;
 
-    case 'BA': // British Airways — execclub affiliate deep-link (accepts pre-fill params)
-      return `https://www.britishairways.com/travel/booking/execclub/_gf/en_gb`
-           + `?process=searchFlights`
-           + `&Oc=${o}&Dc=${d}`
-           + `&AdultsNmbr=${pax}&ChildrenNmbr=0&InfantNmbr=0`
-           + `&CabinCode=${cabinBA}`
-           + `&TravelType=${isRT ? 'R' : 'S'}`
-           + `&OutBoundLeg-Date=${dy}${dm}${dd}`
-           + `${isRT && retDate ? `&InBoundLeg-Date=${retDate.replace(/-/g, '')}` : ''}`;
+    case 'BA': // British Airways — public booking page with pre-fill params (no login required)
+      return `https://www.britishairways.com/en-gb/book-a-flight`
+           + `?origin=${o}&destination=${d}`
+           + `&type=${isRT ? 'return' : 'one-way'}`
+           + `&depart=${depDate}`
+           + `${isRT && retDate ? `&return=${retDate}` : ''}`
+           + `&adults=${pax}&cabin=${cabin}`;
 
     case 'AF': { // Air France — hit booking subdomain directly (wwws.airfrance.fr)
       // Using wwws.airfrance.fr avoids the geo-redirect that strips query params.
