@@ -92,8 +92,6 @@ const AIRPORTS = [
 
 const AIRLINES = [
   { code:'FR', name:'Ryanair',         emoji:'🟡', home:'https://www.ryanair.com'        },
-  { code:'U2', name:'easyJet',         emoji:'🟠', home:'https://www.easyjet.com'        },
-  { code:'LH', name:'Lufthansa',       emoji:'⭐', home:'https://www.lufthansa.com'      },
   { code:'BA', name:'British Airways', emoji:'🔵', home:'https://www.britishairways.com' },
   { code:'AF', name:'Air France',      emoji:'🔷', home:'https://www.airfrance.com'      },
   { code:'KL', name:'KLM',             emoji:'🩵', home:'https://www.klm.com'            },
@@ -194,7 +192,7 @@ const BASE_EUR = {
 const SEASON = [1.10, 1.00, 0.95, 0.92, 0.95, 1.10, 1.40, 1.45, 1.25, 1.00, 0.90, 1.30];
 
 // Airlines that operate short-haul budget routes
-const BUDGET = new Set(['FR','U2']);
+const BUDGET = new Set(['FR']);
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
 
@@ -295,28 +293,14 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
   }
 
   // Cabin codes
-  const cabinLH = { economy:'Y', premium:'W', business:'C', first:'F' }[cabin] || 'Y';
   const cabinBA = { economy:'M', premium:'W', business:'C', first:'F' }[cabin] || 'M';
 
   switch (airlineCode) {
 
-    case 'FR': // Ryanair — path-based deep link (pre-fills origin, destination, date, pax)
+    case 'FR': // Ryanair — path-based deep link
       return `https://www.ryanair.com/gb/en/booking/home`
            + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}`
            + `/${pax}/0/0/0`;
-
-    case 'U2': // easyJet — query-string deep link
-      return `https://www.easyjet.com/en/flight-selection`
-           + `?origin=${o}&destination=${d}`
-           + `&outboundDate=${depDate}${isRT ? `&inboundDate=${retDate}` : ''}`
-           + `&adults=${pax}&children=0&infants=0`;
-
-    case 'LH': // Lufthansa — query-string deep link
-      return `https://www.lufthansa.com/gb/en/flights-search`
-           + `?searchType=${isRT ? 'R' : 'S'}`
-           + `&originCode=${o}&destinationCode=${d}`
-           + `&departureDate=${depDate}${isRT ? `&returnDate=${retDate}` : ''}`
-           + `&adult=${pax}&children=0&infant=0&cabin=${cabinLH}`;
 
     case 'BA': // British Airways — classic booking deep link
       return `https://www.britishairways.com/travel/booking/public/en_gb`
@@ -325,19 +309,19 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
            + `${isRT ? `&retdate=${retBA}` : ''}`
            + `&numadults=${pax}&numchildren=0&numinfants=0`;
 
-    case 'AF': { // Air France — modern search URL
+    case 'AF': { // Air France — modern search URL (www.airfrance.com)
       const cabinAF = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'ECONOMY';
       const segs = isRT
         ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
         : `${o}:${d}:${depDate}`;
-      return `https://wwws.airfrance.com/search/offers`
+      return `https://www.airfrance.com/search/offers`
            + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en&country=GB`
            + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
            + `&segments=${segs}`;
     }
 
-    case 'KL': // KLM — hash-based deep link
-      return `https://www.klm.com/search/en/gb`
+    case 'KL': // KLM — deep link (/en/gb/search with hash params)
+      return `https://www.klm.com/en/gb/search`
            + `#outward=${o}:${d}/${depDate};`
            + `${isRT ? `return=${d}:${o}/${retDate};` : ''}`
            + `passengers=1:${pax},0,0`;
