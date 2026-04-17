@@ -302,26 +302,26 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
            + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}`
            + `/${pax}/0/0/0`;
 
-    case 'BA': // British Airways — classic booking deep link
-      return `https://www.britishairways.com/travel/booking/public/en_gb`
-           + `?eId=106032&origin=${o}&destination=${d}`
-           + `&class=${cabinBA}&depdate=${depBA}`
-           + `${isRT ? `&retdate=${retBA}` : ''}`
-           + `&numadults=${pax}&numchildren=0&numinfants=0`;
+    case 'BA': // British Airways — legacy IBE params (targets the home/search page directly)
+      return `https://www.britishairways.com/travel/home/public/en_gb/`
+           + `?Oc=${o}&Dc=${d}&AdultsNmbr=${pax}&CabinCode=${cabinBA}`
+           + `&TravelType=${isRT ? 'R' : 'S'}`
+           + `&OutBoundLeg-Date=${dy}${dm}${dd}`
+           + `${isRT && retDate ? `&InBoundLeg-Date=${retDate.replace(/-/g, '')}` : ''}`;
 
-    case 'AF': { // Air France — modern search URL (www.airfrance.com)
+    case 'AF': { // Air France — use .co.uk to force English (avoids geo-redirect to .fr)
       const cabinAF = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'ECONOMY';
       const segs = isRT
         ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
         : `${o}:${d}:${depDate}`;
-      return `https://www.airfrance.com/search/offers`
+      return `https://www.airfrance.co.uk/search/offers`
            + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en&country=GB`
            + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
            + `&segments=${segs}`;
     }
 
-    case 'KL': // KLM — deep link (/en/gb/search with hash params)
-      return `https://www.klm.com/en/gb/search`
+    case 'KL': // KLM — locale must be hyphenated en-gb (slash-separated gives 404)
+      return `https://www.klm.com/en-gb/search`
            + `#outward=${o}:${d}/${depDate};`
            + `${isRT ? `return=${d}:${o}/${retDate};` : ''}`
            + `passengers=1:${pax},0,0`;
