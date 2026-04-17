@@ -91,18 +91,12 @@ const AIRPORTS = [
 // ── AIRLINES (Europe only) ────────────────────────────────────────────────────
 
 const AIRLINES = [
-  { code:'FR', name:'Ryanair',          emoji:'🟡', home:'https://www.ryanair.com'           },
-  { code:'U2', name:'easyJet',          emoji:'🟠', home:'https://www.easyjet.com'           },
-  { code:'LH', name:'Lufthansa',        emoji:'⭐', home:'https://www.lufthansa.com'         },
-  { code:'BA', name:'British Airways',  emoji:'🔵', home:'https://www.britishairways.com'    },
-  { code:'AF', name:'Air France',       emoji:'🔷', home:'https://wwws.airfrance.com'        },
-  { code:'KL', name:'KLM',              emoji:'🩵', home:'https://www.klm.com'               },
-  { code:'IB', name:'Iberia',           emoji:'🔴', home:'https://www.iberia.com'            },
-  { code:'VY', name:'Vueling',          emoji:'🟡', home:'https://www.vueling.com'           },
-  { code:'TP', name:'TAP Air Portugal', emoji:'🟢', home:'https://www.tapairportugal.com'    },
-  { code:'LX', name:'Swiss',            emoji:'❇️',  home:'https://www.swiss.com'             },
-  { code:'DY', name:'Norwegian',        emoji:'🔴', home:'https://www.norwegian.com'         },
-  { code:'W6', name:'Wizz Air',         emoji:'🟣', home:'https://wizzair.com'               },
+  { code:'FR', name:'Ryanair',         emoji:'🟡', home:'https://www.ryanair.com'        },
+  { code:'U2', name:'easyJet',         emoji:'🟠', home:'https://www.easyjet.com'        },
+  { code:'LH', name:'Lufthansa',       emoji:'⭐', home:'https://www.lufthansa.com'      },
+  { code:'BA', name:'British Airways', emoji:'🔵', home:'https://www.britishairways.com' },
+  { code:'AF', name:'Air France',      emoji:'🔷', home:'https://www.airfrance.com'      },
+  { code:'KL', name:'KLM',             emoji:'🩵', home:'https://www.klm.com'            },
 ];
 
 // ── PRICING ───────────────────────────────────────────────────────────────────
@@ -118,7 +112,7 @@ const BASE_EUR = {
 const SEASON = [1.10, 1.00, 0.95, 0.92, 0.95, 1.10, 1.40, 1.45, 1.25, 1.00, 0.90, 1.30];
 
 // Airlines that operate short-haul budget routes
-const BUDGET = new Set(['FR','U2','VY','W6','DY']);
+const BUDGET = new Set(['FR','U2']);
 
 // ── UTILS ────────────────────────────────────────────────────────────────────
 
@@ -152,12 +146,8 @@ function routeBucket(o, d) {
 }
 
 function routeAirlines(o, d) {
-  const bucket = routeBucket(o, d);
-  // Short haul: budget + full-service; medium/long: full-service + some budget
-  if (bucket === 'short') {
-    return AIRLINES.filter(a => ['FR','U2','BA','LH','IB','VY','TP','KL','AF','W6','DY'].includes(a.code));
-  }
-  return AIRLINES.filter(a => ['BA','LH','AF','KL','IB','TP','LX','DY','U2','FR'].includes(a.code));
+  // All 6 airlines operate across the route network; budget carriers lead on short haul
+  return AIRLINES;
 }
 
 function priceFor(o, d, dateStr, airlineCode) {
@@ -223,92 +213,52 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
   }
 
   // Cabin codes
-  const cabinLH  = { economy:'Y', premium:'W', business:'C', first:'F' }[cabin] || 'Y';
-  const cabinTP  = { economy:'E', premium:'W', business:'C', first:'F' }[cabin] || 'E';
-  const cabinBA  = { economy:'M', premium:'W', business:'C', first:'F' }[cabin] || 'M';
+  const cabinLH = { economy:'Y', premium:'W', business:'C', first:'F' }[cabin] || 'Y';
+  const cabinBA = { economy:'M', premium:'W', business:'C', first:'F' }[cabin] || 'M';
 
   switch (airlineCode) {
 
-    case 'FR': // Ryanair
-      return `https://www.ryanair.com/en/trip/flights/select`
-           + `?adults=${pax}&teens=0&children=0&infants=0`
-           + `&dateOut=${depDate}${isRT ? `&dateIn=${retDate}` : ''}`
-           + `&isConnectedFlight=false&isReturn=${isRT}`
-           + `&discount=0&promoCode=&originIata=${o}&destinationIata=${d}`;
+    case 'FR': // Ryanair — path-based deep link (pre-fills origin, destination, date, pax)
+      return `https://www.ryanair.com/gb/en/booking/home`
+           + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}`
+           + `/${pax}/0/0/0`;
 
-    case 'U2': // easyJet
+    case 'U2': // easyJet — query-string deep link
       return `https://www.easyjet.com/en/flight-selection`
            + `?origin=${o}&destination=${d}`
            + `&outboundDate=${depDate}${isRT ? `&inboundDate=${retDate}` : ''}`
            + `&adults=${pax}&children=0&infants=0`;
 
-    case 'LH': // Lufthansa
+    case 'LH': // Lufthansa — query-string deep link
       return `https://www.lufthansa.com/gb/en/flights-search`
            + `?searchType=${isRT ? 'R' : 'S'}`
            + `&originCode=${o}&destinationCode=${d}`
            + `&departureDate=${depDate}${isRT ? `&returnDate=${retDate}` : ''}`
            + `&adult=${pax}&children=0&infant=0&cabin=${cabinLH}`;
 
-    case 'BA': // British Airways
+    case 'BA': // British Airways — classic booking deep link
       return `https://www.britishairways.com/travel/booking/public/en_gb`
            + `?eId=106032&origin=${o}&destination=${d}`
            + `&class=${cabinBA}&depdate=${depBA}`
            + `${isRT ? `&retdate=${retBA}` : ''}`
            + `&numadults=${pax}&numchildren=0&numinfants=0`;
 
-    case 'AF': { // Air France
-      const [ry, rm, rd] = retDate ? retDate.split('-') : ['', '', ''];
-      return `https://wwws.airfrance.com/cgi-bin/cgif81.dll`
-           + `?market=GB&ext=true&lang=en`
-           + `&triptype=${isRT ? 'RT' : 'OW'}`
-           + `&dep1=${o}&arr1=${d}&dd1=${depSlash}`
-           + `${isRT ? `&ad1=${rd}/${rm}/${ry}` : ''}`
-           + `&pax=${pax}`;
+    case 'AF': { // Air France — modern search URL
+      const cabinAF = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'ECONOMY';
+      const segs = isRT
+        ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
+        : `${o}:${d}:${depDate}`;
+      return `https://wwws.airfrance.com/search/offers`
+           + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en&country=GB`
+           + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
+           + `&segments=${segs}`;
     }
 
-    case 'KL': // KLM
+    case 'KL': // KLM — hash-based deep link
       return `https://www.klm.com/search/en/gb`
            + `#outward=${o}:${d}/${depDate};`
            + `${isRT ? `return=${d}:${o}/${retDate};` : ''}`
            + `passengers=1:${pax},0,0`;
-
-    case 'IB': // Iberia
-      return `https://www.iberia.com/en/comprar/vuelos/`
-           + `?adults=${pax}&children=0&infants=0`
-           + `&fromAirport=${o}&toAirport=${d}`
-           + `&departure=${depDate}`
-           + `${isRT ? `&returnFlight=${retDate}&tripType=roundTrip` : '&tripType=oneWay'}`;
-
-    case 'VY': // Vueling
-      return `https://www.vueling.com/en/book/book-flights`
-           + `?ibe=VUELINGHOME#/search/${isRT ? 'roundtrip' : 'oneway'}`
-           + `/${o}/${d}/${depDate}/${isRT ? retDate : ''}/${pax}/0/0`;
-
-    case 'TP': // TAP Air Portugal
-      return `https://booking.flytap.com/`
-           + `?lang=EN&searchType=${isRT ? 'R' : 'S'}`
-           + `&origin=${o}&destination=${d}`
-           + `&outboundDate=${depDate}${isRT ? `&returnDate=${retDate}` : ''}`
-           + `&adt=${pax}&chd=0&inf=0&cabin=${cabinTP}`;
-
-    case 'LX': // Swiss
-      return `https://www.swiss.com/gb/en/flights-search`
-           + `?origin=${o}&destination=${d}`
-           + `&departureDate=${depDate}${isRT ? `&returnDate=${retDate}` : ''}`
-           + `&adults=${pax}&children=0&infants=0`
-           + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`;
-
-    case 'DY': { // Norwegian
-      const [ry2, rm2, rd2] = retDate ? retDate.split('-') : ['', '', ''];
-      return `https://www.norwegian.com/en/booking/add-flights/`
-           + `?D_City=${o}&A_City=${d}&D_Date=${depCompact}`
-           + `${isRT ? `&R_Date=${ry2}${rm2}${rd2}` : ''}`
-           + `&T_Passenger_a=${pax}`;
-    }
-
-    case 'W6': // Wizz Air
-      return `https://wizzair.com/en-gb#/booking/select-flight`
-           + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}/${pax}/0/0/null`;
 
     default: {
       const al = AIRLINES.find(a => a.code === airlineCode);
