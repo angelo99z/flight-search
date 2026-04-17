@@ -302,13 +302,14 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
            + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}`
            + `/${pax}/0/0/0`;
 
-    case 'BA': // British Airways — public booking page with pre-fill params (no login required)
-      return `https://www.britishairways.com/en-gb/book-a-flight`
-           + `?origin=${o}&destination=${d}`
-           + `&type=${isRT ? 'return' : 'one-way'}`
-           + `&depart=${depDate}`
-           + `${isRT && retDate ? `&return=${retDate}` : ''}`
-           + `&adults=${pax}&cabin=${cabin}`;
+    case 'BA': // British Airways — IBE booking home (confirmed working path from browser tests)
+      return `https://www.britishairways.com/travel/home/public/en_gb/`
+           + `?Oc=${o}&Dc=${d}`
+           + `&AdultsNmbr=${pax}&ChildrenNmbr=0&InfantNmbr=0`
+           + `&CabinCode=${cabinBA}`
+           + `&TravelType=${isRT ? 'R' : 'S'}`
+           + `&OutBoundLeg-Date=${dy}${dm}${dd}`
+           + `${isRT && retDate ? `&InBoundLeg-Date=${retDate.replace(/-/g, '')}` : ''}`;
 
     case 'AF': { // Air France — hit booking subdomain directly (wwws.airfrance.fr)
       // Using wwws.airfrance.fr avoids the geo-redirect that strips query params.
@@ -323,11 +324,15 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
            + `&segments=${segs}`;
     }
 
-    case 'KL': { // KLM — en-gb (hyphenated) + hash deep-link
-      const retPart = isRT && retDate ? `return=${d}:${o}/${retDate};` : '';
-      return `https://www.klm.com/en-gb/search`
-           + `#outward=${o}:${d}/${depDate};${retPart}`
-           + `passengers=1:${pax},0,0`;
+    case 'KL': { // KLM — same booking platform as Air France; use wwws.klm.com/search/offers
+      const cabinKL = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'ECONOMY';
+      const segsKL = isRT && retDate
+        ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
+        : `${o}:${d}:${depDate}`;
+      return `https://wwws.klm.com/search/offers`
+           + `?pax=${pax}:ADT&cabinClass=${cabinKL}&lang=en`
+           + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
+           + `&segments=${segsKL}`;
     }
 
     default: {
