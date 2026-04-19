@@ -538,9 +538,11 @@ function openCal(forField) {
     const ny = S.calMonth === 11 ? S.calYear + 1 : S.calYear;
     cacheMonth(S.origin.code, S.destination.code, ny, nm);
   }
-  const dual = S.tripType === 'roundtrip';
-  calMWrap.classList.toggle('single', !dual);
-  calM2.classList.toggle('hidden', !dual);
+  // Always show 2 months so there are always ~60 future dates visible,
+  // even when the current month is nearly over (e.g. opening on Apr 19
+  // would otherwise leave only 12 days available in one-way mode).
+  calMWrap.classList.remove('single');
+  calM2.classList.remove('hidden');
   calModeLbl.textContent = forField === 'dep' ? 'Select departure date' : 'Select return date';
   updateCalSelInfo(); renderBothMonths();
   calOverlay.classList.remove('hidden');
