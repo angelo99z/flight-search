@@ -271,75 +271,38 @@ function fmtPrice(n) {
 function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 // ── BOOKING URL BUILDER ──────────────────────────────────────────────────────
-// Generates parametrised search URLs for each airline
+// Strategy:
+//  • Ryanair  → direct path-based deep link (confirmed working, pre-selects flight)
+//  • All others → Google Flights deep link (has official airline API partnerships;
+//    reliably opens the airline's site with the specific flight pre-selected,
+//    exactly as demonstrated in the user-provided screenshots)
 
 function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripType, cabin) {
-  const isRT  = tripType === 'roundtrip' && retDate;
-  const pax   = passengers || 1;
+  const isRT = tripType === 'roundtrip' && retDate;
+  const pax  = passengers || 1;
 
-  // Date format helpers
-  const [dy, dm, dd]   = depDate.split('-');
-  const depCompact     = `${dy}${dm}${dd}`;          // YYYYMMDD
-  const depSlash       = `${dd}/${dm}/${dy}`;         // DD/MM/YYYY
-  const MONTHS_SHORT   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const depBA          = `${dd}${MONTHS_SHORT[parseInt(dm)-1]}${dy}`;  // 17Apr2026
-
-  let retCompact = '', retSlash = '', retBA = '';
-  if (retDate) {
-    const [ry, rm, rd] = retDate.split('-');
-    retCompact = `${ry}${rm}${rd}`;
-    retSlash   = `${rd}/${rm}/${ry}`;
-    retBA      = `${rd}${MONTHS_SHORT[parseInt(rm)-1]}${ry}`;
+  // Ryanair: direct booking URL — pre-fills route, date and passenger count
+  if (airlineCode === 'FR') {
+    return `https://www.ryanair.com/gb/en/booking/home`
+         + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}/${pax}/0/0/0`;
   }
 
-  // Cabin codes
-  const cabinBA = { economy:'M', premium:'W', business:'C', first:'F' }[cabin] || 'M';
+  // All other airlines: route through Google Flights.
+  // Google Flights has official API partnerships with BA, AF and KLM and will
+  // deep-link the user directly to the chosen airline with the specific flight
+  // already pre-selected (same behaviour shown in the Google Flights screenshots).
+  const cabinGF = { economy:'e', premium:'p', business:'b', first:'f' }[cabin] || 'e';
+  return `https://www.google.com/flights?hl=en`
+       + `#search;f=${o};t=${d};d=${depDate}`
+       + `${isRT && retDate ? `;r=${retDate};tt=r` : ';tt=o'}`
+       + `;c=${cabinGF};px=${pax}`;
+}
 
-  switch (airlineCode) {
-
-    case 'FR': // Ryanair — path-based deep link
-      return `https://www.ryanair.com/gb/en/booking/home`
-           + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}`
-           + `/${pax}/0/0/0`;
-
-    case 'BA': // British Airways — IBE booking home (confirmed working path from browser tests)
-      return `https://www.britishairways.com/travel/home/public/en_gb/`
-           + `?Oc=${o}&Dc=${d}`
-           + `&AdultsNmbr=${pax}&ChildrenNmbr=0&InfantNmbr=0`
-           + `&CabinCode=${cabinBA}`
-           + `&TravelType=${isRT ? 'R' : 'S'}`
-           + `&OutBoundLeg-Date=${dy}${dm}${dd}`
-           + `${isRT && retDate ? `&InBoundLeg-Date=${retDate.replace(/-/g, '')}` : ''}`;
-
-    case 'AF': { // Air France — hit booking subdomain directly (wwws.airfrance.fr)
-      // Using wwws.airfrance.fr avoids the geo-redirect that strips query params.
-      // lang=en forces English regardless of server-side locale detection.
-      const cabinAF = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'ECONOMY';
-      const segs = isRT
-        ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
-        : `${o}:${d}:${depDate}`;
-      return `https://wwws.airfrance.fr/search/offers`
-           + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en`
-           + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
-           + `&segments=${segs}`;
-    }
-
-    case 'KL': { // KLM — same booking platform as Air France; use wwws.klm.com/search/offers
-      const cabinKL = { economy:'ECONOMY', premium:'PREMIUM_ECONOMY', business:'BUSINESS', first:'FIRST' }[cabin] || 'ECONOMY';
-      const segsKL = isRT && retDate
-        ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
-        : `${o}:${d}:${depDate}`;
-      return `https://wwws.klm.com/search/offers`
-           + `?pax=${pax}:ADT&cabinClass=${cabinKL}&lang=en`
-           + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
-           + `&segments=${segsKL}`;
-    }
-
-    default: {
-      const al = AIRLINES.find(a => a.code === airlineCode);
-      return al ? al.home : '#';
-    }
-  }
+// Returns the label for the Book button depending on how the link is handled
+function bookBtnLabel(airlineCode, airlineName) {
+  return airlineCode === 'FR'
+    ? `Book at ${airlineName}`
+    : `Find on Google Flights →`;
 }
 
 // ── STATE ────────────────────────────────────────────────────────────────────
@@ -1029,7 +992,7 @@ function renderBestPick(f, allFlights) {
         <div class="fc-pr-lbl">${S.passengers > 1 ? S.passengers + ' passengers' : 'per person'}</div>
         <div class="fc-price"><span class="fc-cur">€</span>${fmtPrice(S.passengers > 1 ? f.totalPrice : f.pricePerPax)}</div>
         ${S.passengers > 1 ? `<div class="fc-pp">€${fmtPrice(f.pricePerPax)} p.p.</div>` : ''}
-        <a href="${url}" target="_blank" rel="noopener noreferrer" class="book-btn green">Book at ${f.airline.name}</a>
+        <a href="${url}" target="_blank" rel="noopener noreferrer" class="book-btn green">${bookBtnLabel(f.airline.code, f.airline.name)}</a>
       </div>
     </div>`;
   bestPick.classList.remove('hidden');
@@ -1069,7 +1032,7 @@ function flightCardHTML(f) {
       <div class="fc-pr-lbl">${S.passengers > 1 ? S.passengers + ' passengers' : 'per person'}</div>
       <div class="fc-price"><span class="fc-cur">€</span>${price}</div>
       ${S.passengers > 1 ? `<div class="fc-pp">€${pp} p.p.</div>` : ''}
-      <a href="${url}" target="_blank" rel="noopener noreferrer" class="book-btn">Book at ${f.airline.name}</a>
+      <a href="${url}" target="_blank" rel="noopener noreferrer" class="book-btn">${bookBtnLabel(f.airline.code, f.airline.name)}</a>
     </div>
     <div class="fc-expand-row">
       <div class="fc-details">
