@@ -506,25 +506,24 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
            + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}/${pax}/0/0/null`;
 
     // ── British Airways ───────────────────────────────────────────────────────
-    // IBE (Internet Booking Engine) accepts legacy query-string params on this path
+    // BA's booking engine is a SPA with no public deep-link spec — URL params
+    // are not preserved. Redirect to the homepage so users can search directly.
     case 'BA':
-      return `https://www.britishairways.com/travel/home/public/en_gb/`
-           + `?Oc=${o}&Dc=${d}&AdultsNmbr=${pax}&ChildrenNmbr=0&InfantNmbr=0`
-           + `&CabinCode=${cabinBA}&TravelType=${isRT ? 'R' : 'S'}`
-           + `&OutBoundLeg-Date=${depYMD}`
-           + `${isRT && retDate ? `&InBoundLeg-Date=${retDate.replace(/-/g,'')}` : ''}`;
+      return 'https://www.britishairways.com';
 
     // ── Air France ────────────────────────────────────────────────────────────
-    // wwws.airfrance.fr is the booking subdomain — no geo-redirect, params preserved
-    // lang=en forces English UI; segments=O:D:date triggers the search directly
+    // /search/open-dates is the current booking endpoint on wwws.airfrance.fr
+    // connections format: ORIGIN:A:YYYYMMDD>DEST:A  (A = airport code)
+    // Round-trip legs are separated by a dash: outbound-inbound
     case 'AF': {
-      const segs = isRT && retDate
-        ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
-        : `${o}:${d}:${depDate}`;
-      return `https://wwws.airfrance.fr/search/offers`
-           + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en`
-           + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
-           + `&segments=${segs}`;
+      const depYMDAF  = depDate.replace(/-/g, '');
+      const conn = isRT && retDate
+        ? `${o}:A:${depYMDAF}>${d}:A-${d}:A:${retDate.replace(/-/g,'')}>${o}:A`
+        : `${o}:A:${depYMDAF}>${d}:A`;
+      return `https://wwws.airfrance.fr/search/open-dates`
+           + `?pax=${pax}:0:0:0:0:0:0:0&cabinClass=${cabinAF}`
+           + `&activeConnection=0&bookingFlow=LEISURE`
+           + `&connections=${encodeURIComponent(conn)}`;
     }
 
     // ── KLM ───────────────────────────────────────────────────────────────────
