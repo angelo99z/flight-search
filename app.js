@@ -528,10 +528,10 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
     }
 
     // ── KLM ───────────────────────────────────────────────────────────────────
-    // KLM's current SPA uses /search/flights — no deep-link params supported.
-    // Redirect to the search page; user selects route on KLM's side.
+    // KLM redirects to regional sites (klm.ie, klm.co.uk, etc.) based on
+    // location — no stable deep-link path exists. Use the root domain.
     case 'KL':
-      return 'https://www.klm.com/search/flights';
+      return 'https://www.klm.com';
 
     default: {
       const al = AIRLINES.find(a => a.code === airlineCode);
