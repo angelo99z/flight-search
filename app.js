@@ -92,6 +92,7 @@ const AIRPORTS = [
 
 const AIRLINES = [
   { code:'FR', name:'Ryanair',         emoji:'🟡', home:'https://www.ryanair.com'        },
+  { code:'W6', name:'Wizz Air',        emoji:'🟣', home:'https://wizzair.com'            },
   { code:'BA', name:'British Airways', emoji:'🔵', home:'https://www.britishairways.com' },
   { code:'AF', name:'Air France',      emoji:'🔷', home:'https://www.airfrance.com'      },
   { code:'KL', name:'KLM',             emoji:'🩵', home:'https://www.klm.com'            },
@@ -166,6 +167,137 @@ function mapRyanairFlights(data) {
   }
   if (!flights.length) throw new Error('No Ryanair flights on this route/date');
   return flights;
+}
+
+// ── WIZZAIR LIVE API (no key required) ───────────────────────────────────────
+// Uses Wizzair's own search endpoint — same approach as Ryanair.
+
+async function searchWizzairFlights() {
+  const isRT = S.tripType === 'roundtrip' && S.retDate;
+  const body = JSON.stringify({
+    flightList: [
+      { departureStation: S.origin.code, arrivalStation: S.destination.code, date: S.depDate },
+      ...(isRT ? [{ departureStation: S.destination.code, arrivalStation: S.origin.code, date: S.retDate }] : []),
+    ],
+    adultCount:  S.passengers,
+    childCount:  0,
+    infantCount: 0,
+    wdc: false,
+  });
+
+  const apiUrl   = 'https://be.wizzair.com/20.3.0/Api/search/search';
+  const proxyUrl = `${CORS_PROXY}${encodeURIComponent(apiUrl)}`;
+
+  // allorigins only supports GET — we POST via a helper endpoint
+  const res = await fetch('https://corsproxy.io/?' + encodeURIComponent(apiUrl), {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body,
+  });
+  if (!res.ok) throw new Error(`Wizzair API failed: ${res.status}`);
+  const data = await res.json();
+  return mapWizzairFlights(data);
+}
+
+function mapWizzairFlights(data) {
+  const dist    = Math.round(haversine(S.origin.lat, S.origin.lon, S.destination.lat, S.destination.lon));
+  const airline = { code:'W6', name:'Wizz Air', emoji:'🟣', home:'https://wizzair.com' };
+  const flights = [];
+
+  for (const flight of data?.outboundFlights ?? []) {
+    const depTime = flight.departureDateTime;   // "2026-05-01T09:30:00"
+    const arrTime = flight.arrivalDateTime;
+    const [dh, dm] = depTime.split('T')[1].split(':').map(Number);
+    const [ah, am] = arrTime.split('T')[1].split(':').map(Number);
+    const dh2 = new Date(depTime), ah2 = new Date(arrTime);
+    const duration = Math.round((ah2 - dh2) / 60000);
+    const price = flight.price?.amount ?? flight.fares?.[0]?.price?.amount ?? 0;
+
+    if (!price) continue;
+    flights.push({
+      id:         `W6-live-${flight.flightNumber?.replace(/\s/g,'')}`,
+      airline,
+      depH: dh, depM: dm, arrH: ah, arrM: am,
+      duration,
+      stops:      0,
+      layovers:   [],
+      pricePerPax: price,
+      totalPrice:  Math.round(price * S.passengers),
+      flightNum:  flight.flightNumber ?? 'W6',
+      distance:   dist,
+      date:       S.depDate,
+      _live:      true,
+    });
+  }
+  if (!flights.length) throw new Error('No Wizz Air flights on this route/date');
+  return flights;
+}
+
+// ── SKY SCRAPPER via RapidAPI (multi-airline: BA, AF, KLM, etc.) ─────────────
+// Free tier: 50 requests/month — register at rapidapi.com → search "Sky Scrapper"
+// Paste your key below to activate live prices for all other airlines.
+
+const RAPIDAPI_KEY = '';   // ← your RapidAPI key (free at rapidapi.com)
+
+async function searchSkyScrapperFlights() {
+  if (!RAPIDAPI_KEY) throw new Error('RapidAPI key not configured');
+  const isRT = S.tripType === 'roundtrip' && S.retDate;
+
+  const params = new URLSearchParams({
+    originSkyId:          S.origin.code,
+    destinationSkyId:     S.destination.code,
+    originEntityId:       S.origin.entityId   || S.origin.code,
+    destinationEntityId:  S.destination.entityId || S.destination.code,
+    date:                 S.depDate,
+    ...(isRT && S.retDate ? { returnDate: S.retDate } : {}),
+    cabinClass:           S.cabin === 'premium' ? 'premium_economy' : S.cabin,
+    adults:               String(S.passengers),
+    currency:             'EUR',
+    market:               'IE',
+    locale:               'en-GB',
+  });
+
+  const res = await fetch(`https://sky-scrapper.p.rapidapi.com/api/v2/flights/searchFlights?${params}`, {
+    headers: {
+      'x-rapidapi-host': 'sky-scrapper.p.rapidapi.com',
+      'x-rapidapi-key':  RAPIDAPI_KEY,
+    },
+  });
+  if (!res.ok) throw new Error(`Sky Scrapper failed: ${res.status}`);
+  const json = await res.json();
+  return mapSkyScrapperFlights(json?.data?.itineraries ?? []);
+}
+
+function mapSkyScrapperFlights(itineraries) {
+  const dist = Math.round(haversine(S.origin.lat, S.origin.lon, S.destination.lat, S.destination.lon));
+  return itineraries.flatMap((it, idx) => {
+    const leg       = it.legs[0];
+    const seg       = leg.segments[0];
+    const depStr    = leg.departure;                // "2026-05-01T09:35:00"
+    const arrStr    = leg.arrival;
+    const [dh, dm]  = depStr.split('T')[1].split(':').map(Number);
+    const [ah, am]  = arrStr.split('T')[1].split(':').map(Number);
+    const duration  = leg.durationInMinutes;
+    const stops     = leg.stopCount;
+    const code      = seg.marketingCarrier?.alternateId ?? seg.operatingCarrier?.alternateId ?? '??';
+    const airline   = AIRLINES.find(a => a.code === code)
+                   || { code, name: seg.marketingCarrier?.name ?? code, emoji: '✈️', home: '#' };
+    const pricePerPax = parseFloat(it.price?.formatted?.replace(/[^0-9.]/g,'') ?? '0');
+    if (!pricePerPax) return [];
+    return [{
+      id:          `${code}-ss-${idx}`,
+      airline,
+      depH: dh, depM: dm, arrH: ah, arrM: am,
+      duration, stops,
+      layovers:    leg.segments.slice(0,-1).map(s => s.arrival?.id ?? ''),
+      pricePerPax,
+      totalPrice:  Math.round(pricePerPax * S.passengers),
+      flightNum:   `${code}${seg.flightNumber ?? ''}`,
+      distance:    dist,
+      date:        S.depDate,
+      _live:       true,
+    }];
+  });
 }
 
 // ── AMADEUS LIVE API ──────────────────────────────────────────────────────────
@@ -363,6 +495,11 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
     case 'FR':
       return `https://www.ryanair.com/gb/en/booking/home`
            + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}/${pax}/0/0/0`;
+
+    // ── Wizz Air ─────────────────────────────────────────────────────────────
+    case 'W6':
+      return `https://wizzair.com/en-gb/booking/select-flight`
+           + `/${o}/${d}/${depDate}/${isRT ? retDate : 'null'}/${pax}/0/0/null`;
 
     // ── British Airways ───────────────────────────────────────────────────────
     // IBE (Internet Booking Engine) accepts legacy query-string params on this path
@@ -821,31 +958,42 @@ async function doSearch() {
 }
 
 async function fetchFlights() {
-  // Run Ryanair API + Amadeus (if configured) in parallel
-  const tasks = [
-    searchRyanairFlights().catch(e => { console.warn('Ryanair API:', e.message); return []; }),
-  ];
+  // ── Run all live sources in parallel ────────────────────────────────────────
+  const tasks = {
+    ryanair:  searchRyanairFlights() .catch(e => { console.warn('Ryanair:',     e.message); return []; }),
+    wizzair:  searchWizzairFlights() .catch(e => { console.warn('Wizz Air:',    e.message); return []; }),
+    sky:      searchSkyScrapperFlights().catch(e => { console.warn('SkyScrapper:',e.message); return []; }),
+  };
   if (AMADEUS_CLIENT_ID && AMADEUS_CLIENT_SECRET) {
-    tasks.push(
-      searchAmadeusFlights().catch(e => { console.warn('Amadeus API:', e.message); return []; })
-    );
+    tasks.amadeus = searchAmadeusFlights().catch(e => { console.warn('Amadeus:', e.message); return []; });
   }
 
-  const results = await Promise.all(tasks);
+  const res = await Promise.all(Object.values(tasks));
+  const [frFlights, w6Flights, ssFlights, amFlights = []] = res;
 
-  // Merge: Amadeus results for non-Ryanair airlines + Ryanair live results
-  const ryanairFlights = results[0];
-  const amadeusFlights = results[1] ?? [];
-  const otherFlights   = amadeusFlights.filter(f => f.airline.code !== 'FR');
-  const merged         = [...ryanairFlights, ...otherFlights];
+  // Deduplicate by airline: prefer live results, skip simulated duplicates
+  const liveCodes = new Set([
+    ...frFlights.map(f => f.airline.code),
+    ...w6Flights.map(f => f.airline.code),
+    ...ssFlights.map(f => f.airline.code),
+    ...amFlights.map(f => f.airline.code),
+  ]);
+
+  const merged = [
+    ...frFlights,
+    ...w6Flights,
+    ...ssFlights,
+    ...amFlights.filter(f => !frFlights.some(r => r.airline.code === f.airline.code)
+                           && !ssFlights.some(r => r.airline.code === f.airline.code)),
+  ];
 
   if (merged.length > 0) {
     const liveCount = merged.filter(f => f._live).length;
-    loadingSub.textContent = `Found ${merged.length} flight${merged.length > 1 ? 's' : ''} (${liveCount} live prices)`;
+    loadingSub.textContent = `${merged.length} flight${merged.length > 1 ? 's' : ''} found · ${liveCount} live prices`;
     return merged;
   }
 
-  // Full fallback — no live data available
+  // Full fallback — all live sources failed
   showToast('Live prices unavailable — showing estimated prices', 3500);
   return generateFlights();
 }
