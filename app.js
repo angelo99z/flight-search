@@ -92,7 +92,6 @@ const AIRPORTS = [
 
 const AIRLINES = [
   { code:'FR', name:'Ryanair',         emoji:'🟡', home:'https://www.ryanair.com'        },
-  { code:'W6', name:'Wizz Air',        emoji:'🟣', home:'https://wizzair.com'            },
   { code:'BA', name:'British Airways', emoji:'🔵', home:'https://www.britishairways.com' },
   { code:'AF', name:'Air France',      emoji:'🔷', home:'https://www.airfrance.com'      },
   { code:'KL', name:'KLM',             emoji:'🩵', home:'https://www.klm.com'            },
@@ -966,7 +965,6 @@ async function fetchFlights() {
   // ── Run all live sources in parallel ────────────────────────────────────────
   const tasks = {
     ryanair:  searchRyanairFlights() .catch(e => { console.warn('Ryanair:',     e.message); return []; }),
-    wizzair:  searchWizzairFlights() .catch(e => { console.warn('Wizz Air:',    e.message); return []; }),
     sky:      searchSkyScrapperFlights().catch(e => { console.warn('SkyScrapper:',e.message); return []; }),
   };
   if (AMADEUS_CLIENT_ID && AMADEUS_CLIENT_SECRET) {
@@ -974,19 +972,11 @@ async function fetchFlights() {
   }
 
   const res = await Promise.all(Object.values(tasks));
-  const [frFlights, w6Flights, ssFlights, amFlights = []] = res;
+  const [frFlights, ssFlights, amFlights = []] = res;
 
   // Deduplicate by airline: prefer live results, skip simulated duplicates
-  const liveCodes = new Set([
-    ...frFlights.map(f => f.airline.code),
-    ...w6Flights.map(f => f.airline.code),
-    ...ssFlights.map(f => f.airline.code),
-    ...amFlights.map(f => f.airline.code),
-  ]);
-
   const merged = [
     ...frFlights,
-    ...w6Flights,
     ...ssFlights,
     ...amFlights.filter(f => !frFlights.some(r => r.airline.code === f.airline.code)
                            && !ssFlights.some(r => r.airline.code === f.airline.code)),
@@ -1189,7 +1179,7 @@ function stopsLabel(n) {
 }
 
 function renderResults(flights) {
-  const hasDirectLive = flights.some(f => f._source === 'ryanair' || f._source === 'wizzair');
+  const hasDirectLive = flights.some(f => f._source === 'ryanair');
   const hasAggregated = flights.some(f => f._source === 'skyscrapper');
   const isLive        = flights.some(f => f._live);
 
