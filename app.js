@@ -237,7 +237,8 @@ function mapWizzairFlights(data) {
 // Free tier: 50 requests/month — register at rapidapi.com → search "Sky Scrapper"
 // Paste your key below to activate live prices for all other airlines.
 
-const RAPIDAPI_KEY = '';   // ← your RapidAPI key (free at rapidapi.com)
+const RAPIDAPI_KEY  = 'a8ff1cbaf4mshd79876a0e921059p121c4cjsnc29f6bb10cc5';
+const RAPIDAPI_HOST = 'sky-scrapper3.p.rapidapi.com';
 
 async function searchSkyScrapperFlights() {
   if (!RAPIDAPI_KEY) throw new Error('RapidAPI key not configured');
@@ -257,9 +258,9 @@ async function searchSkyScrapperFlights() {
     locale:               'en-GB',
   });
 
-  const res = await fetch(`https://sky-scrapper.p.rapidapi.com/api/v2/flights/searchFlights?${params}`, {
+  const res = await fetch(`https://${RAPIDAPI_HOST}/api/v2/flights/searchFlights?${params}`, {
     headers: {
-      'x-rapidapi-host': 'sky-scrapper.p.rapidapi.com',
+      'x-rapidapi-host': RAPIDAPI_HOST,
       'x-rapidapi-key':  RAPIDAPI_KEY,
     },
   });
