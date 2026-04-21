@@ -527,10 +527,19 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
     }
 
     // ── KLM ───────────────────────────────────────────────────────────────────
-    // KLM redirects to regional sites (klm.ie, klm.co.uk, etc.) based on
-    // location — no stable deep-link path exists. Use the root domain.
-    case 'KL':
-      return 'https://www.klm.com';
+    // ── KLM ───────────────────────────────────────────────────────────────────
+    // KLM shares the same booking platform as Air France (AF-KLM group).
+    // /search/open-dates accepts identical params: connections=O:A:YYYYMMDD>D:A
+    case 'KL': {
+      const depYMDKL = depDate.replace(/-/g, '');
+      const connKL = isRT && retDate
+        ? `${o}:A:${depYMDKL}>${d}:A-${d}:A:${retDate.replace(/-/g,'')}>${o}:A`
+        : `${o}:A:${depYMDKL}>${d}:A`;
+      return `https://www.klm.com/search/open-dates`
+           + `?pax=${pax}:0:0:0:0:0:0:0&cabinClass=${cabinAF}`
+           + `&activeConnection=0&bookingFlow=LEISURE`
+           + `&connections=${encodeURIComponent(connKL)}`;
+    }
 
     default: {
       const al = AIRLINES.find(a => a.code === airlineCode);
