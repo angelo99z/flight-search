@@ -161,6 +161,7 @@ function mapRyanairFlights(data) {
           distance:    dist,
           date:        S.depDate,
           _live:       true,
+          _source:     'ryanair',
         });
       }
     }
@@ -227,6 +228,7 @@ function mapWizzairFlights(data) {
       distance:   dist,
       date:       S.depDate,
       _live:      true,
+      _source:    'wizzair',
     });
   }
   if (!flights.length) throw new Error('No Wizz Air flights on this route/date');
@@ -297,6 +299,7 @@ function mapSkyScrapperFlights(itineraries) {
       distance:    dist,
       date:        S.depDate,
       _live:       true,
+      _source:     'skyscrapper',
     }];
   });
 }
@@ -1182,17 +1185,28 @@ function stopsLabel(n) {
 }
 
 function renderResults(flights) {
-  const isLive = flights.some(f => f._live);
-  resTitle.innerHTML = `${S.origin.city} → ${S.destination.city}`
-    + (isLive
-      ? ` <span style="font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">● Live prices</span>`
-      : ` <span style="font-size:11px;font-weight:600;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">~ Estimated prices</span>`);
+  const hasDirectLive = flights.some(f => f._source === 'ryanair' || f._source === 'wizzair');
+  const hasAggregated = flights.some(f => f._source === 'skyscrapper');
+  const isLive        = flights.some(f => f._live);
+
+  let badge;
+  if (hasDirectLive && !hasAggregated)
+    badge = `<span style="font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">● Live prices</span>`;
+  else if (hasAggregated && !hasDirectLive)
+    badge = `<span style="font-size:11px;font-weight:600;background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">~ Indicative prices</span>`;
+  else if (isLive)
+    badge = `<span style="font-size:11px;font-weight:600;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">● Mixed sources</span>`;
+  else
+    badge = `<span style="font-size:11px;font-weight:600;background:#fef9c3;color:#854d0e;padding:2px 8px;border-radius:99px;vertical-align:middle;margin-left:6px">~ Estimated prices</span>`;
+
+  resTitle.innerHTML = `${S.origin.city} → ${S.destination.city}` + badge;
+
   const dist = Math.round(haversine(S.origin.lat, S.origin.lon, S.destination.lat, S.destination.lon));
   let info = fmtDate(S.depDate);
   if (S.retDate) info += ` · Return ${fmtDate(S.retDate)}`;
   info += ` · ${S.passengers} passenger${S.passengers > 1 ? 's' : ''}`;
   info += ` · ${capitalize(S.cabin)} · ~${fmtPrice(dist)} km`;
-  if (!isLive) info += ' · Add Amadeus API keys for live prices';
+  if (hasAggregated) info += ' · BA/AF/KLM prices are indicative — verify on airline site';
   resInfo.textContent = info;
 
   $q('.sort-pill').forEach(p => p.classList.toggle('active', p.dataset.sort === S.sortBy));
@@ -1259,8 +1273,9 @@ function renderBestPick(f, allFlights) {
       </div>
       <div class="fc-pr">
         <div class="fc-pr-lbl">${S.passengers > 1 ? S.passengers + ' passengers' : 'per person'}</div>
-        <div class="fc-price"><span class="fc-cur">€</span>${fmtPrice(S.passengers > 1 ? f.totalPrice : f.pricePerPax)}</div>
-        ${S.passengers > 1 ? `<div class="fc-pp">€${fmtPrice(f.pricePerPax)} p.p.</div>` : ''}
+        <div class="fc-price"><span class="fc-cur">${f._source === 'skyscrapper' ? '~€' : '€'}</span>${fmtPrice(S.passengers > 1 ? f.totalPrice : f.pricePerPax)}</div>
+        ${S.passengers > 1 ? `<div class="fc-pp">${f._source === 'skyscrapper' ? '~' : ''}€${fmtPrice(f.pricePerPax)} p.p.</div>` : ''}
+        ${f._source === 'skyscrapper' ? `<div style="font-size:10px;color:#92400e;margin-bottom:4px;text-align:right">Indicative — verify on site</div>` : ''}
         <a href="${url}" target="_blank" rel="noopener noreferrer" class="book-btn green">Book at ${f.airline.name}</a>
       </div>
     </div>`;
@@ -1299,8 +1314,9 @@ function flightCardHTML(f) {
     </div>
     <div class="fc-pr">
       <div class="fc-pr-lbl">${S.passengers > 1 ? S.passengers + ' passengers' : 'per person'}</div>
-      <div class="fc-price"><span class="fc-cur">€</span>${price}</div>
-      ${S.passengers > 1 ? `<div class="fc-pp">€${pp} p.p.</div>` : ''}
+      <div class="fc-price"><span class="fc-cur">${f._source === 'skyscrapper' ? '~€' : '€'}</span>${price}</div>
+      ${S.passengers > 1 ? `<div class="fc-pp">${f._source === 'skyscrapper' ? '~' : ''}€${pp} p.p.</div>` : ''}
+      ${f._source === 'skyscrapper' ? `<div style="font-size:10px;color:#92400e;margin-bottom:4px;text-align:right">Indicative — verify on site</div>` : ''}
       <a href="${url}" target="_blank" rel="noopener noreferrer" class="book-btn">Book at ${f.airline.name}</a>
     </div>
     <div class="fc-expand-row">
