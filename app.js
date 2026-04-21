@@ -97,6 +97,77 @@ const AIRLINES = [
   { code:'KL', name:'KLM',             emoji:'🩵', home:'https://www.klm.com'            },
 ];
 
+// ── RYANAIR LIVE API (no key required) ───────────────────────────────────────
+// Uses Ryanair's own availability endpoint — the same one their website calls.
+// A CORS proxy (allorigins.win) is used because browsers block direct cross-
+// origin calls to ryanair.com from external domains.
+
+const CORS_PROXY = 'https://api.allorigins.win/get?url=';
+
+async function searchRyanairFlights() {
+  const o   = S.origin.code;
+  const d   = S.destination.code;
+  const isRT = S.tripType === 'roundtrip' && S.retDate;
+
+  const params = new URLSearchParams({
+    ADT: String(S.passengers), CHD: '0', INF: '0', TEEN: '0',
+    DateOut:     S.depDate,
+    DateIn:      isRT ? S.retDate : '',
+    Origin:      o,
+    Destination: d,
+    RoundTrip:   String(isRT),
+    FlexDaysBeforeOut: '0',
+    FlexDaysOut:       '0',
+    ToUs: 'AGREED',
+  });
+
+  const apiUrl   = `https://www.ryanair.com/api/booking/v4/en-gb/availability?${params}`;
+  const proxyUrl = `${CORS_PROXY}${encodeURIComponent(apiUrl)}`;
+
+  const res = await fetch(proxyUrl);
+  if (!res.ok) throw new Error(`Ryanair proxy failed: ${res.status}`);
+  const wrapper = await res.json();
+  if (!wrapper.contents) throw new Error('Empty proxy response');
+  const data = JSON.parse(wrapper.contents);
+  return mapRyanairFlights(data);
+}
+
+function mapRyanairFlights(data) {
+  const dist    = Math.round(haversine(S.origin.lat, S.origin.lon, S.destination.lat, S.destination.lon));
+  const airline = AIRLINES.find(a => a.code === 'FR');
+  const flights = [];
+
+  for (const trip of data.trips || []) {
+    if (trip.tripType !== 'OUTBOUND') continue;
+    for (const dateGroup of trip.dates || []) {
+      for (const flight of dateGroup.flights || []) {
+        if (!flight.regularFare) continue;                   // sold out / unavailable
+        const seg          = flight.segments[0];
+        const [dh, dm]     = seg.time[0].split('T')[1].split(':').map(Number);
+        const [ah, am]     = seg.time[1].split('T')[1].split(':').map(Number);
+        const fareAdult    = flight.regularFare.fares.find(f => f.type === 'ADT');
+        const pricePerPax  = fareAdult?.amount ?? 0;
+        flights.push({
+          id:          `FR-live-${flight.flightNumber.replace(/\s/g, '')}`,
+          airline,
+          depH: dh, depM: dm, arrH: ah, arrM: am,
+          duration:    flight.durationMins || (seg.durationMins ?? 90),
+          stops:       flight.hasStopOver ? 1 : 0,
+          layovers:    [],
+          pricePerPax,
+          totalPrice:  Math.round(pricePerPax * S.passengers),
+          flightNum:   flight.flightNumber.replace(/\s/g, ''),
+          distance:    dist,
+          date:        S.depDate,
+          _live:       true,
+        });
+      }
+    }
+  }
+  if (!flights.length) throw new Error('No Ryanair flights on this route/date');
+  return flights;
+}
+
 // ── AMADEUS LIVE API ──────────────────────────────────────────────────────────
 // Free API keys → https://developers.amadeus.com  (Self-Service → Create app)
 // Paste your credentials below; leave blank to use estimated prices as fallback.
@@ -727,10 +798,9 @@ async function doSearch() {
   flightsList.innerHTML = '';
   countLabel.classList.add('hidden');
 
-  const useLive = !!(AMADEUS_CLIENT_ID && AMADEUS_CLIENT_SECRET);
-  loadingSub.textContent = useLive
-    ? 'Fetching live prices from airlines…'
-    : `Checking ${AIRLINES.map(a => a.name).join(', ')}`;
+  loadingSub.textContent = AMADEUS_CLIENT_ID
+    ? 'Fetching live prices from Ryanair & Amadeus…'
+    : 'Fetching live prices from Ryanair…';
 
   resetFilters();
   resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -751,14 +821,32 @@ async function doSearch() {
 }
 
 async function fetchFlights() {
+  // Run Ryanair API + Amadeus (if configured) in parallel
+  const tasks = [
+    searchRyanairFlights().catch(e => { console.warn('Ryanair API:', e.message); return []; }),
+  ];
   if (AMADEUS_CLIENT_ID && AMADEUS_CLIENT_SECRET) {
-    try {
-      return await searchAmadeusFlights();
-    } catch (err) {
-      console.warn('Amadeus API error — falling back to estimated prices:', err);
-      showToast('Live prices unavailable — showing estimated prices', 3500);
-    }
+    tasks.push(
+      searchAmadeusFlights().catch(e => { console.warn('Amadeus API:', e.message); return []; })
+    );
   }
+
+  const results = await Promise.all(tasks);
+
+  // Merge: Amadeus results for non-Ryanair airlines + Ryanair live results
+  const ryanairFlights = results[0];
+  const amadeusFlights = results[1] ?? [];
+  const otherFlights   = amadeusFlights.filter(f => f.airline.code !== 'FR');
+  const merged         = [...ryanairFlights, ...otherFlights];
+
+  if (merged.length > 0) {
+    const liveCount = merged.filter(f => f._live).length;
+    loadingSub.textContent = `Found ${merged.length} flight${merged.length > 1 ? 's' : ''} (${liveCount} live prices)`;
+    return merged;
+  }
+
+  // Full fallback — no live data available
+  showToast('Live prices unavailable — showing estimated prices', 3500);
   return generateFlights();
 }
 
