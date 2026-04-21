@@ -528,16 +528,16 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
     }
 
     // ── KLM ───────────────────────────────────────────────────────────────────
-    // KLM and Air France share the same booking platform (Air France-KLM group)
-    // wwws.klm.com mirrors the AF booking subdomain with identical param format
+    // www.klm.com booking deep-link (wwws.klm.com was decommissioned)
     case 'KL': {
-      const segsKL = isRT && retDate
-        ? `${o}:${d}:${depDate},${d}:${o}:${retDate}`
-        : `${o}:${d}:${depDate}`;
-      return `https://wwws.klm.com/search/offers`
-           + `?pax=${pax}:ADT&cabinClass=${cabinAF}&lang=en`
-           + `&tripType=${isRT ? 'ROUND_TRIP' : 'ONE_WAY'}`
-           + `&segments=${segsKL}`;
+      const [ry, rm, rd] = depDate.split('-');
+      const depFmt = `${ry}-${rm}-${rd}`;
+      const cabinKL = { economy:'Economy', premium:'PremiumEconomy', business:'BusinessClass', first:'BusinessClass' }[cabin] || 'Economy';
+      let url = `https://www.klm.com/en/book-a-trip`
+              + `?origin=${o}&destination=${d}&outboundDate=${depFmt}`
+              + `&adults=${pax}&tripType=${isRT ? 'ROUNDTRIP' : 'ONEWAY'}&cabin=${cabinKL}`;
+      if (isRT && retDate) url += `&returnDate=${retDate}`;
+      return url;
     }
 
     default: {
@@ -1133,14 +1133,17 @@ function bindFilterEvents(minP, maxP, maxDurFull) {
     $('dur-val-label').textContent = fmtDur(S.filters.maxDur);
     updateClearBtn(); applyFiltersAndRender();
   });
-  $q('.time-chip').forEach(chip =>
-    chip.addEventListener('click', () => {
-      chip.classList.toggle('active');
-      S.filters.times = [...$q('.time-chip.active')].map(c => c.dataset.t);
-      updateClearBtn(); applyFiltersAndRender();
-    })
-  );
 }
+
+// Time-chip listeners are set up ONCE at startup to avoid duplicate handlers
+// (bindFilterEvents is called on every search, but these chips are static DOM)
+$q('.time-chip').forEach(chip =>
+  chip.addEventListener('click', () => {
+    chip.classList.toggle('active');
+    S.filters.times = [...$q('.time-chip.active')].map(c => c.dataset.t);
+    updateClearBtn(); applyFiltersAndRender();
+  })
+);
 
 function updateClearBtn() {
   const active = S.filters.stops.length || S.filters.airlines.length
