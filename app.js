@@ -528,17 +528,10 @@ function buildBookingUrl(airlineCode, o, d, depDate, retDate, passengers, tripTy
     }
 
     // ── KLM ───────────────────────────────────────────────────────────────────
-    // www.klm.com booking deep-link (wwws.klm.com was decommissioned)
-    case 'KL': {
-      const [ry, rm, rd] = depDate.split('-');
-      const depFmt = `${ry}-${rm}-${rd}`;
-      const cabinKL = { economy:'Economy', premium:'PremiumEconomy', business:'BusinessClass', first:'BusinessClass' }[cabin] || 'Economy';
-      let url = `https://www.klm.com/en/book-a-trip`
-              + `?origin=${o}&destination=${d}&outboundDate=${depFmt}`
-              + `&adults=${pax}&tripType=${isRT ? 'ROUNDTRIP' : 'ONEWAY'}&cabin=${cabinKL}`;
-      if (isRT && retDate) url += `&returnDate=${retDate}`;
-      return url;
-    }
+    // KLM's current SPA uses /search/flights — no deep-link params supported.
+    // Redirect to the search page; user selects route on KLM's side.
+    case 'KL':
+      return 'https://www.klm.com/search/flights';
 
     default: {
       const al = AIRLINES.find(a => a.code === airlineCode);
